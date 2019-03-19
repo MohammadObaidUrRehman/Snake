@@ -1,34 +1,39 @@
-import socket # communication
 import sys
-from thread import *# threading concurrency and parallelism 
+import socket # communication
+from thread import * # threading concurrency and parallelism 
 import random # random number generation 
 import curses # game related features e.g rendering
 import ast # sting to array conversion
+import time # for time.sleep
 
 # function to send data across the socket
 # sock is the connection
 # message is the string we need to send
 def send_using_socket(sock,message):
 	try:
-		# always need to encode before sending
 		sock.sendall(message.encode())
 	except socket.error:
 		print("did not send successfully")
 		sys.exit()
 
-# this is where the programs starts from 
-# initialisation of socket
+def render(snake,numberOfPlayers): #function to render snake, need to add for numplayers
+	for y in range (0,len(snake)):
+		for x in range(0,len(snake[y])):
+			w.addch(int(snake[y][x][0]), int(snake[y][x][1]), "o")
+			time.sleep(0.01)
+
+####################################
+# program begins execution from here
+####################################
 try:
 	sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 except socket.error:
 	print ("Failed to connect")
 	sys.exit()
-# define port and host 
-ack = "ack"
+ack  = "ack"
 host = "localhost"
 port = 8888
-# resolve host "localhost" in our case
-try:
+try: # resolve host "localhost" in our case
 	remote_ip = socket.gethostbyname(host)
 except socket.gaierror:
 	# print("host name could not be resolved")
@@ -36,49 +41,47 @@ except socket.gaierror:
 
 sock.connect((remote_ip, port))
 
-tempdim = sock.recv(1024) # recieve dimensions of the screen
-sock.send(ack.encode())
-dim = ast.literal_eval(tempdim.decode())
-# decode dimensions of the screen
-sh = dim[0][0] # height of the screen (y dimension)
-sw = dim[0][1] # width of the screen  (x dimension)
+tempdim = sock.recv(1024) #1.1: recv dimensions of the screen
+sock.send(ack.encode())#1.2: send ack
+
+dim = ast.literal_eval(tempdim.decode()) # decode dimensions of screen
+sh = dim[0][0] # screen height (y dimension)
+sw = dim[0][1] # screen width  (x dimension)
 # initialize new window with height and width
 stdscr = curses.initscr()
 curses.curs_set(0)
 w = curses.newwin(int(sh), int(sw), 0, 0)
-w.box() # create border around the player screen
+w.box() # border around the player screen
 w.keypad(1) # intialize to get keyboard input
-w.timeout(1000) # set game speed, higher value means slower game
-snakeTemp = sock.recv(1024) # recieve snake dimensions
-sock.send(ack.encode())
+w.timeout(1000) # set game speed, higher value = slower game
+
+snakeTemp = sock.recv(1024) #2.1: recv snake dimensions
+sock.send(ack.encode()) #2.2: send ack
 
 snakeTemp = snakeTemp.decode() # decode string into array
 snake = ast.literal_eval(snakeTemp)
 
-myPlayNum = sock.recv(1024)
-sock.send(ack.encode())
+myPlayNum = sock.recv(1024) #3.1: recv number of players
+sock.send(ack.encode()) #3.2: send number ack
 
 myPlayNum = ast.literal_eval(myPlayNum.decode())
-mySnake = snake[myPlayNum]
+mySnake = snake[myPlayNum] #get mySnake
 food = [sh/2, sw/2]
 
-w.addch(food[0], food[1], curses.ACS_PI)
-key = curses.KEY_RIGHT # intially the input is hardcoded to right
-# infinite while loop
-while 1:
-	# function to get keyboard input 
-	next_key = w.getch()
+w.addch(food[0], food[1], curses.ACS_PI) #render first food
+key = curses.KEY_RIGHT #intially input is hardcoded to right
+
+while 1: #infinite while loop
+	next_key = w.getch() # keyboard input 
 	key = key if next_key == -1 else next_key
 	# ending conditions
-	# if the snak reaches the border then end game
-	# if the snake eats himeself them end game
-	# print "before ending", mySnake
+	# if snake reaches border or eats himself then end game
+	# implement in server
 	if mySnake[0][0] in [0, sh] or mySnake[0][1]  in [0, sw] or mySnake[0] in mySnake[1:]:
 		curses.endwin()
 		quit()
-	# print "2"]
 	new_head = [mySnake[0][0], mySnake[0][1]]
-# encode the action to be taken in the string, and then send it to socket
+# encode next move in the string, and then send it to socket
 # for now the socket just replies back with the same message
 # we need to add functionality and in the sockets for this
 	if key == curses.KEY_DOWN:
@@ -89,21 +92,20 @@ while 1:
 		message="left"
 	if key == curses.KEY_RIGHT:
 		message="right"
-	# print "3"
+
 	temp = str([message] + mySnake) 
-	# print temp
-	sock.recv(1024) #1 wait for ack
-	sock.send(temp.encode()) #2 send input
-	reply = sock.recv(1024) #3 recv validated input
-	resp = ast.literal_eval(reply.decode())
-	sock.send(ack.encode()) #4
-	tFood = sock.recv(1024) #5
-	sock.send(ack.encode()) #6
-	# print "4"
+	sock.recv(1024) #4.1: recv wait for ack
+	sock.send(temp.encode()) #4.2: send input
+
+	reply = sock.recv(1024) #5.1: recv validated input
+	sock.send(ack.encode()) #5.2: send ack
+
+	tFood = sock.recv(1024) #6.1: recv food
+	sock.send(ack.encode()) #6.2: send ack
 	
-# move the mySnake according to keyboard input 
+# move mySnake according to keyboard input 
+	resp = ast.literal_eval(reply.decode())
 	response = str(resp[0])
-	# print response
 	if response == "down":
 		new_head[0] += 1
 	if response == "up":
@@ -112,54 +114,18 @@ while 1:
 		new_head[1] -= 1
 	if response == "right":
 		new_head[1] += 1
-	# print "5"
 
-# we pop from the tail and add to the head to make it seem like the mySnake is moving
-# if the mySnake eats food we don't pop from the tails to make it look like the mySnake has grown
-	# print new_head
-	mySnake.insert(0, new_head)
-	# print "6"
+	mySnake.insert(0, new_head) #edit snake, to this in server
+	w.addch(food[0], food[1], ' ') #remove old food
+	food = ast.literal_eval(tFood.decode())
+	w.addch(food[0], food[1], curses.ACS_PI) # render new food
 
-	# this code has been commented for now, it refreshes the food whenever the mySnake eats food
-	# with this code the mySnake also grows when it eats
-	# all this code needs to be added to the server
-	""" 
-	# if mySnake[0] == food:
-	# 	food = None
-	# 	while food is None:
-	# 		nf = [
-	# 			random.randint(1, sh-1),
-	# 			random.randint(1, sw-1)
-	# 		]
-	# 		food = nf if nf not in mySnake else None
-	# w.addch(food[0], food[1], curses.ACS_PI)
-	# else:
-		# tail = mySnake.pop()
-	# 	w.addch(tail[0], tail[1], ' ')
-"""
-	# in the current implemtntaion the mySnake doesn't grow
-			# w.addch(food[1], food[0], ' ')
-			# food = ast.literal_eval(tFood.decode())
-			# w.addch(food[1], food[0], curses.ACS_PI)
-# render new food on the screen
-
-
-	tail = mySnake.pop()
-	w.addch(int(tail[0]), int(tail[1]), ' ')
-	# print "snake ", snake[0][0]
-	w.addch(int(mySnake[0][0]), int(mySnake[0][1]), curses.ACS_CKBOARD)
-	# print tail
-	# print "7"
-
-	# w.addch(int(tail[1]), int(tail[0]), ' ')
-
-	# w.addch(int(tail[0]), int(tail[1]), ' ')
-# pop from the tail
-	# print mySnake
-	# w.addch(int(mySnake[0][0]), int(mySnake[0][1]), curses.ACS_CKBOARD)
-	# print "1"
-# add to the head
+	w.clear()
+	w.box()
+	mySnake.pop()# pop from tail
+	snake[myPlayNum]=mySnake
+	render(snake,2) #render on screen
+	w.refresh()
 # sock.close()
 
-
-# need to deal with tail error maybe array is going our of bounds
+# need to deal with tail error maybe array is going out of bounds
