@@ -1,12 +1,16 @@
 from _thread import * # each player will have a seperate thread
-import socket # communication between clients via server (sending and recieving data)
+import socket# communication between clients via server (sending and recieving data)
+from socket import gethostbyname
 import sys
 import random # generate random numbers	
 import time # use the time.sleep function
 import ast # convert string to array
+import os
 # port number and local host can change this aswell
 # local host
-host = ''
+# host = '0.0.0.0'
+# hostName = gethostbyname('0.0.0.0')
+hostName = gethostbyname( '0.0.0.0' )
 port = 8888
 
 ack = "ack"
@@ -29,7 +33,7 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # create socket
 print("socket created")
 
 try: 	
-	sock.bind((host, port)) # bind socket to host and port
+	sock.bind((hostName, port)) # bind socket to host and port
 except socket.error:
 	print ("binding failed")
 	sys.exit()
@@ -68,7 +72,7 @@ def collision(snake,my_play):
 				return 1
 	return 0
 # this function launches whenever a player(client) connects
-def clientthread(conn,my_play):
+def clientthread(conn,my_play,lock):
 	global ydim # screen height
 	global xdim	# screen width
 	global food_pos # position of food
@@ -76,8 +80,9 @@ def clientthread(conn,my_play):
 	global curr_play
 	has_lost = 0
 	tempPlay = str(tot_Play)
-	conn.send(tempPlay.encode())
-	conn.recv(1024)
+	print(tempPlay)
+	conn.send(tempPlay.encode())#0.1 send
+	conn.recv(1024)#0.2 recv
 
 	temp = [[ydim]+[xdim]]# dimension data in a an array
 	message = str(temp) # convert array data to string
@@ -98,6 +103,7 @@ def clientthread(conn,my_play):
 	mySnake = snakes[my_play]
 	play_n = play_n+1
 	print(my_play)
+	lastinput = "right"
 	while curr_play>1:
 		conn.send(ack.encode()) #4.1: send ack
 		data = conn.recv(1024) #4.2: recv "up down left right"
@@ -109,6 +115,11 @@ def clientthread(conn,my_play):
 			new_head = [mySnake[0][0], mySnake[0][1]]
 			reply = data.decode()
 			response = str(reply)
+
+
+			if (lastinput == "right" and response =="left") or (lastinput == "left" and response == "right") or (lastinput == "up" and response == "down") or (lastinput == "down" and response == "up"):
+				response = lastinput
+
 			if response == "down":
 				new_head[0] += 1
 			if response == "up":
@@ -117,6 +128,7 @@ def clientthread(conn,my_play):
 				new_head[1] -= 1
 			if response == "right":
 				new_head[1] += 1
+			lastinput = response
 			mySnake.insert(0, new_head) #edit snake, to this in server
 			mySnake.pop()# pop from tail
 
@@ -124,13 +136,14 @@ def clientthread(conn,my_play):
 				has_lost = 1
 				curr_play = curr_play - 1
 				mySnake = []
-				break;
+				# break;
 			elif collision(mySnake,my_play):
 				has_lost = 1
 				curr_play = curr_play - 1
 				mySnake = []
-				break;
-		if (has_lost==1 or curr_play<2):
+				# break;
+		if (curr_play<2):
+			print("curr play")
 			break
 		snakes[my_play]=mySnake # might need to use locks
 
@@ -144,6 +157,7 @@ def clientthread(conn,my_play):
 		tempFood = str(food_pos)
 		conn.send(tempFood.encode()) #6.1: send food
 		conn.recv(1024) #6.2: recv wait for ack
+	print("has lost")
 	if has_lost==0:
 		winmsg = "win"
 		conn.send(winmsg.encode())
@@ -152,7 +166,11 @@ def clientthread(conn,my_play):
 		winmsg = "loss"
 		conn.send(winmsg.encode())
 		conn.recv(1024)
-	conn.close() # close connection
+	print("clsong")
+	# conn.close() # close connection
+	print("closed connection")
+	lock.release()
+	# return
 
 # function runs in parallel with all the threads, generates random food coordinates
 # conn: socket connection data 
@@ -174,26 +192,41 @@ def food_function(dummy_var,food_present):
 ####################################
 user_list = [] # list of all users
 conn_list = [] # list of all connections
+thread_list = []
+locks = []
 global tot_Play
 tot_Play = input("Number of Players: ")
 tot_Play = int(tot_Play)
 curr_play = tot_Play
-snakes =[]
+snakes = []
 snakes = generatesnake(tot_Play)
 start_new_thread(food_function,("dummy",0)) #generate foods
 print( "the snake is ", snakes)
 while 1:
+	print( "here")
 	conn, addr = sock.accept()# accept connections when client tries to connect
 	print("connected with " +  addr[0] + ":" + str(addr[1]))
 	user_list.append(addr[1])
 	conn_list.append(conn)
 	# start_new_thread(clientthread, (conn,0))
-
+	has_completed = 0
 	if(len(conn_list)==tot_Play):
 		for co in range(0,tot_Play):
-			start_new_thread(clientthread, (conn_list[co],co))
-sock.close() # close socket
-
+			_lock = allocate_lock()
+			_lock.acquire()
+			locks.append(_lock)
+			to = start_new_thread(clientthread, (conn_list[co],co,_lock))
+		for _lock in locks:
+			_lock.acquire()
+		break;
+			# thread_list.append(to)
+		# for k in thread_list:
+		# 	k.join()
+			# print("here")
+sock.shutdown(socket.SHUT_RDWR)
+sock.close() # close socket #need to this in thread
+print("the game has ended")
+os.system("reset")
 # to-do
 # food should be same for both 
 # generate random variable for snake position?

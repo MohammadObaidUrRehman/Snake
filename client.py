@@ -25,7 +25,7 @@ except socket.error:
 	print ("Failed to connect")
 	sys.exit()
 ack  = "ack"
-host = "localhost"
+host = "192.168.1.10"
 port = 8888
 try: # resolve host "localhost" in our case
 	remote_ip = socket.gethostbyname(host)
@@ -35,9 +35,10 @@ except socket.gaierror:
 
 sock.connect((remote_ip, port))
 
-totPlayTemp = sock.recv(1024)
-totPlay = int(totPlayTemp.decode())
-sock.send(ack.encode())
+totPlayTemp = sock.recv(1024)#0.1: recv total num players
+totPlay = totPlayTemp.decode()
+totPlay = int(totPlay)
+sock.send(ack.encode()) #0.2: send ack
 
 tempdim = sock.recv(1024) #1.1: recv dimensions of the screen
 sock.send(ack.encode())#1.2: send ack
@@ -69,16 +70,12 @@ food = [sh/2, sw/2]
 w.addch(food[0], food[1], curses.ACS_PI) #render first food
 key = curses.KEY_RIGHT #intially input is hardcoded to right
 
+lastinput = "right"
 while 1: #infinite while loop
 	next_key = w.getch() # keyboard input 
 	key = key if next_key == -1 else next_key
-	# ending conditions
-	# if snake reaches border or eats himself then end game
-	# implement in server
 
 # encode next move in the string, and then send it to socket
-# for now the socket just replies back with the same message
-# we need to add functionality and in the sockets for this
 	if key == curses.KEY_DOWN:
 		message="down"
 	if key == curses.KEY_UP:
@@ -120,6 +117,5 @@ while 1: #infinite while loop
 	render(snake,totPlay) #render on screen
 	w.refresh()
 print(result)
-
 # sock.close()
 # need to deal with tail error maybe array is going out of bounds
